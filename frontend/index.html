@@ -807,7 +807,10 @@
     </main>
 
     <script>
-        const API_URL = 'http://localhost:5000/api/medical-query';
+        // Use localhost in development and relative /api path in production (e.g., Vercel)
+        const API_URL = (typeof window !== 'undefined' && window.location.hostname === 'localhost')
+            ? 'http://localhost:5000/api/medical-query'
+            : '/api/medical-query';
         let conversationHistory = [];
         let queryCount = 0;
         let sessionStartTime = new Date();

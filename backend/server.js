@@ -70,6 +70,7 @@ function generateSmartResponse(query) {
 1. **Over-the-counter relief** - Acetaminophen (500-1000mg) or ibuprofen (200-400mg) for mild pain
 2. **Rest and hydration** - Lie in quiet, dark room; drink water to prevent dehydration
 3. **Seek medical care** if sudden severe headache or accompanies fever/stiff neck
+4. **Recommended medical tests - Complete Blood Count (CBC), CT Scan of Head, MRI of Brain, Lumbar Puncture (Spinal Tap)
 
 **Medical Disclaimer:**
 1. This information is not a substitute for professional medical advice
@@ -94,6 +95,8 @@ function generateSmartResponse(query) {
 1. **Medication for comfort** - Acetaminophen (500-1000mg) or ibuprofen (200-400mg) for fever reduction
 2. **Hydration and rest** - Drink plenty of fluids; rest to support immune system
 3. **Medical attention** if fever >103°F, lasts >3 days, or occurs in infants <3 months
+4. **Recommended medical tests - Complete Blood Count (CBC), Urine Culture, COVID-19 Test
+
 
 **Medical Disclaimer:**
 1. This information is not a substitute for professional medical advice
@@ -118,6 +121,7 @@ function generateSmartResponse(query) {
 1. **Over-the-counter relief** - Dextromethorphan for dry cough or guaifenesin for wet cough
 2. **Home remedies** - Stay hydrated, use honey, elevate head when sleeping, avoid irritants
 3. **Medical consultation** if cough lasts >3 weeks, produces blood, or causes breathing difficulty
+4. **Recommended medical tests - Chest X-ray, COVID-19 Test, Tuberculosis (TB) Test
 
 **Medical Disclaimer:**
 1. This information is not a substitute for professional medical advice
@@ -142,6 +146,8 @@ function generateSmartResponse(query) {
 1. **Medication for symptoms** - Antacids for reflux, loperamide for diarrhea, ginger for nausea
 2. **Dietary management** - Start with clear liquids, then bland foods (BRAT diet), avoid irritants
 3. **Medical attention** for severe pain, blood in vomit/stool, or dehydration signs
+4. **Recommended medical tests - Complete Blood Count (CBC), Liver Function Test (LFT), Abdominal Ultrasound
+
 
 **Medical Disclaimer:**
 1. This information is not a substitute for professional medical advice
@@ -405,8 +411,13 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Medical Chatbot server running on port ${PORT}`);
-  console.log(`Health check available at: http://localhost:${PORT}/api/health`);
-});
+// For Vercel: export the Express app instead of always listening
+module.exports = app;
+
+// For local development: start the server only when not running on Vercel
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Medical Chatbot server running on port ${PORT}`);
+    console.log(`Health check available at: http://localhost:${PORT}/api/health`);
+  });
+}
