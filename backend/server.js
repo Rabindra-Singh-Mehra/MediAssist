@@ -44,6 +44,30 @@ const symptomToTestMap = {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+function resolveOpenAIEndpoint() {
+  const rawApiUrl = (process.env.HF_API_URL || '').trim();
+
+  // Keep existing variable names, but route requests to a valid OpenAI endpoint.
+  if (!rawApiUrl || rawApiUrl.includes('huggingface.co')) {
+    return 'https://api.openai.com/v1/chat/completions';
+  }
+
+  if (rawApiUrl.includes('/chat/completions')) {
+    return rawApiUrl;
+  }
+
+  const normalizedBase = rawApiUrl.replace(/\/+$/, '');
+  if (normalizedBase.endsWith('/v1')) {
+    return `${normalizedBase}/chat/completions`;
+  }
+
+  if (normalizedBase.includes('api.openai.com')) {
+    return `${normalizedBase}/v1/chat/completions`;
+  }
+
+  return `${normalizedBase}/chat/completions`;
+}
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -262,31 +286,40 @@ Focus on:
 
 Please be specific and practical in your response.`;
 
-    // Call Hugging Face API
+    // Call OpenAI API (using existing env var names)
     let medicalResponse;
     
     try {
-      console.log('Calling Hugging Face API...');
+      console.log('Calling OpenAI API...');
       console.log('API Key exists:', !!process.env.HF_API_KEY);
-      console.log('Model ID:', process.env.HF_MODEL_ID);
+      console.log('Model ID:', process.env.HF_MODEL_ID || 'gpt-4o-mini');
       
       // Use a short timeout so serverless invocations do not hang on provider latency.
-      const hasHfConfig = Boolean(process.env.HF_API_URL && process.env.HF_MODEL_ID && process.env.HF_API_KEY);
+      const hasProviderConfig = Boolean(process.env.HF_API_KEY);
 
-      if (!hasHfConfig) {
-        throw new Error('Missing Hugging Face configuration');
+      if (!hasProviderConfig) {
+        throw new Error('Missing API key configuration');
       }
 
+      const openAIEndpoint = resolveOpenAIEndpoint();
+      const model = (process.env.HF_MODEL_ID || 'gpt-4o-mini').trim();
+
       const response = await axios.post(
-        `${process.env.HF_API_URL}/${process.env.HF_MODEL_ID}`,
+        openAIEndpoint,
         {
-          inputs: medicalPrompt,
-          parameters: {
-            max_length: 500,
-            temperature: 0.7,
-            do_sample: true,
-            return_full_text: false
-          }
+          model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a cautious medical assistant. Provide educational guidance, avoid definitive diagnosis, and include safety disclaimers.'
+            },
+            {
+              role: 'user',
+              content: medicalPrompt
+            }
+          ],
+          max_tokens: 500,
+          temperature: 0.7
         },
         {
           headers: {
@@ -297,11 +330,11 @@ Please be specific and practical in your response.`;
         }
       );
 
-      console.log('Hugging Face response status:', response.status);
-      medicalResponse = response.data?.[0]?.generated_text || 'I apologize, but I could not generate a response. Please try again.';
+      console.log('OpenAI response status:', response.status);
+      medicalResponse = response.data?.choices?.[0]?.message?.content?.trim() || 'I apologize, but I could not generate a response. Please try again.';
       
     } catch (apiError) {
-      console.log('Hugging Face API error:');
+      console.log('OpenAI API error:');
       console.log('Error message:', apiError.message);
       console.log('Error response:', apiError.response?.data);
       console.log('Error status:', apiError.response?.status);
