@@ -110,12 +110,22 @@
             font-weight: 500;
         }
 
+        .status-badge.offline {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+        }
+
         .status-dot {
             width: 8px;
             height: 8px;
             background: var(--success);
             border-radius: 50%;
             animation: pulse 2s infinite;
+        }
+
+        .status-badge.offline .status-dot {
+            background: var(--warning);
+            animation: none;
         }
 
         @keyframes pulse {
@@ -639,9 +649,9 @@
                 </div>
             </div>
             <div class="header-actions">
-                <div class="status-badge">
-                    <span class="status-dot"></span>
-                    <span>AI Assistant Online</span>
+                <div class="status-badge" id="serviceStatusBadge">
+                    <span class="status-dot" id="serviceStatusDot"></span>
+                    <span id="serviceStatusText">Checking API...</span>
                 </div>
                 <div class="disclaimer">
                     <i class="fas fa-info-circle"></i>
@@ -808,12 +818,117 @@
 
     <script>
         // Use localhost in development and relative /api path in production (e.g., Vercel)
-        const API_URL = (typeof window !== 'undefined' && window.location.hostname === 'localhost')
-            ? 'http://localhost:5000/api/medical-query'
-            : '/api/medical-query';
+        const API_BASE = (typeof window !== 'undefined' && window.location.hostname === 'localhost')
+            ? 'http://localhost:5000/api'
+            : '/api';
+        const API_URL = `${API_BASE}/medical-query`;
+        const API_HEALTH_URL = `${API_BASE}/health`;
         let conversationHistory = [];
         let queryCount = 0;
         let sessionStartTime = new Date();
+        let isApiHealthy = null;
+
+        function setServiceStatus(healthy, label) {
+            const badge = document.getElementById('serviceStatusBadge');
+            const text = document.getElementById('serviceStatusText');
+
+            if (!badge || !text) {
+                return;
+            }
+
+            if (healthy) {
+                badge.classList.remove('offline');
+                text.textContent = label || 'AI Assistant Online';
+                return;
+            }
+
+            badge.classList.add('offline');
+            text.textContent = label || 'Fallback Mode';
+        }
+
+        async function checkApiHealth() {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+            try {
+                const response = await fetch(API_HEALTH_URL, {
+                    method: 'GET',
+                    signal: controller.signal
+                });
+
+                isApiHealthy = response.ok;
+                setServiceStatus(Boolean(response.ok), response.ok ? 'AI Assistant Online' : 'Fallback Mode');
+            } catch (error) {
+                isApiHealthy = false;
+                setServiceStatus(false, 'Fallback Mode');
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        }
+
+        function generateLocalFallbackResponse(query) {
+            const lowerQuery = query.toLowerCase();
+
+            if (lowerQuery.includes('headache') || lowerQuery.includes('head pain')) {
+                return `I can still help while the live medical API is unavailable.
+
+Possible causes:
+1. Tension headache
+2. Migraine
+3. Sinus pressure
+
+What to do now:
+1. Rest in a dark quiet room and hydrate
+2. Consider OTC pain relief if safe for you
+3. Seek urgent care for severe sudden headache, weakness, confusion, or stiff neck
+
+This is general guidance only and not a diagnosis.`;
+            }
+
+            if (lowerQuery.includes('fever')) {
+                return `I can still help while the live medical API is unavailable.
+
+Possible causes:
+1. Viral infection
+2. Bacterial infection
+3. Inflammatory illness
+
+What to do now:
+1. Monitor temperature and hydrate
+2. Rest and use fever medicine if appropriate
+3. Seek care for persistent fever, breathing trouble, confusion, or severe weakness
+
+This is general guidance only and not a diagnosis.`;
+            }
+
+            return `I can still help while the live medical API is unavailable.
+
+Please share your main symptom, how long it has been present, and any red-flag signs (breathing trouble, chest pain, severe weakness, confusion, bleeding, or dehydration).
+
+If any severe symptoms are present, seek urgent medical care now.
+
+This is general guidance only and not a diagnosis.`;
+        }
+
+        function getApiErrorMessage(responseStatus, data, rawBody) {
+            if (data && typeof data.response === 'string' && data.response.trim()) {
+                return data.response;
+            }
+
+            if (data && typeof data.message === 'string' && data.message.trim()) {
+                return data.message;
+            }
+
+            if (responseStatus === 404) {
+                return 'The API route was not found on this deployment. Please redeploy so /api endpoints are available.';
+            }
+
+            if (rawBody && rawBody.includes('<!doctype') || rawBody && rawBody.includes('<html')) {
+                return `The server returned an HTML page instead of API JSON (status ${responseStatus}). This usually means API routing is misconfigured on deployment.`;
+            }
+
+            return `The medical service returned an error (${responseStatus}).`;
+        }
 
         // Initialize session timer
         function updateSessionTime() {
@@ -947,39 +1062,53 @@
             showTypingIndicator();
             
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000);
+
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ query })
+                    body: JSON.stringify({ query }),
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
 
                 const rawBody = await response.text();
                 let data = null;
+                const contentType = response.headers.get('content-type') || '';
 
                 try {
-                    data = rawBody ? JSON.parse(rawBody) : null;
+                    data = contentType.includes('application/json') && rawBody ? JSON.parse(rawBody) : null;
                 } catch (parseError) {
                     console.error('API returned non-JSON response:', rawBody);
-                    throw new Error('Invalid API response format');
                 }
                 
                 // Hide typing indicator
                 hideTypingIndicator();
                 
                 // Add bot response
-                if (!response.ok) {
-                    addMessage(`I apologize, but the medical service returned an error (${response.status}). Please try again in a moment.`);
+                if (response.ok && data && data.response) {
+                    isApiHealthy = true;
+                    setServiceStatus(true, 'AI Assistant Online');
+                    addMessage(data.response);
                 } else if (data && data.response) {
                     addMessage(data.response);
                 } else {
-                    addMessage('I apologize, but I received an unexpected response from the medical service. Please try again.');
+                    isApiHealthy = false;
+                    setServiceStatus(false, 'Fallback Mode');
+                    const apiErrorMessage = getApiErrorMessage(response.status, data, rawBody || '');
+                    const fallbackResponse = generateLocalFallbackResponse(query);
+                    addMessage(`${apiErrorMessage}\n\n${fallbackResponse}`);
                 }
                 
             } catch (error) {
                 hideTypingIndicator();
-                addMessage('I apologize, but I\'m having trouble connecting to the medical service. Please check your connection and try again.');
+                isApiHealthy = false;
+                setServiceStatus(false, 'Fallback Mode');
+                const fallbackResponse = generateLocalFallbackResponse(query);
+                addMessage(`Live API is currently unreachable, so I switched to local guidance mode.\n\n${fallbackResponse}`);
                 console.error('Error:', error);
             }
         }
@@ -1032,6 +1161,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             updateSessionStart();
             setInterval(updateSessionTime, 1000);
+            checkApiHealth();
             
             document.getElementById('chatInput').focus();
         });
