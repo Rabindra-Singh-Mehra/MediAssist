@@ -954,22 +954,32 @@
                     },
                     body: JSON.stringify({ query })
                 });
-                
-                const data = await response.json();
+
+                const rawBody = await response.text();
+                let data = null;
+
+                try {
+                    data = rawBody ? JSON.parse(rawBody) : null;
+                } catch (parseError) {
+                    console.error('API returned non-JSON response:', rawBody);
+                    throw new Error('Invalid API response format');
+                }
                 
                 // Hide typing indicator
                 hideTypingIndicator();
                 
                 // Add bot response
-                if (data.success) {
+                if (!response.ok) {
+                    addMessage(`I apologize, but the medical service returned an error (${response.status}). Please try again in a moment.`);
+                } else if (data && data.response) {
                     addMessage(data.response);
                 } else {
-                    addMessage('I apologize, but I encountered an error processing your request. Please try again.');
+                    addMessage('I apologize, but I received an unexpected response from the medical service. Please try again.');
                 }
                 
             } catch (error) {
                 hideTypingIndicator();
-                addMessage('I apologize, but I\'m having trouble connecting to the medical database. Please check your connection and try again.');
+                addMessage('I apologize, but I\'m having trouble connecting to the medical service. Please check your connection and try again.');
                 console.error('Error:', error);
             }
         }

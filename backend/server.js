@@ -215,8 +215,10 @@ function generateSmartResponse(query) {
 
 // Medical chatbot API endpoint
 app.post('/api/medical-query', async (req, res) => {
+  let query = '';
+
   try {
-    const { query } = req.body;
+    query = typeof req.body?.query === 'string' ? req.body.query.trim() : '';
     
     if (!query) {
       return res.status(400).json({ 
@@ -268,6 +270,13 @@ Please be specific and practical in your response.`;
       console.log('API Key exists:', !!process.env.HF_API_KEY);
       console.log('Model ID:', process.env.HF_MODEL_ID);
       
+      // Use a short timeout so serverless invocations do not hang on provider latency.
+      const hasHfConfig = Boolean(process.env.HF_API_URL && process.env.HF_MODEL_ID && process.env.HF_API_KEY);
+
+      if (!hasHfConfig) {
+        throw new Error('Missing Hugging Face configuration');
+      }
+
       const response = await axios.post(
         `${process.env.HF_API_URL}/${process.env.HF_MODEL_ID}`,
         {
@@ -283,7 +292,8 @@ Please be specific and practical in your response.`;
           headers: {
             'Authorization': `Bearer ${process.env.HF_API_KEY}`,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 8000
         }
       );
 
